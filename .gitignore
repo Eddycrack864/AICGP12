@@ -1,12 +1,12 @@
 # MDX Models
 mdxnet_models/*.onnx
 
-# RVC Models
-rvc_models/*/*.pth
-rvc_models/*/*.index
-rvc_models/*/*.npy
-rvc_models/hubert_base.pt
-rvc_models/rmvpe.pt
+# Voice Models
+voice_models/*/*.pth
+voice_models/*/*.index
+voice_models/*/*.npy
+voice_models/hubert_base.pt
+voice_models/rmvpe.pt
 
 # Output
 song_output/*/*.wav

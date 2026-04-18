@@ -114,7 +114,7 @@ def show_hop_slider(pitch_detection_algo):
 if __name__ == '__main__':
     parser = ArgumentParser(description='Generate a AI cover song in the song_output/id directory.', add_help=True)
     parser.add_argument("--share", action="store_true", dest="share_enabled", default=False, help="Enable sharing")
-    parser.add_argument("--listen", action="store_true", default=False, help="Make the WebUI reachable from your local network.")
+    parser.add_argument("--listen", action="store_true", default=False, help="Make the Interface reachable from your local network.")
     parser.add_argument('--listen-host', type=str, help='The hostname that the server will use.')
     parser.add_argument('--listen-port', type=int, help='The listening port that the server will use.')
     args = parser.parse_args()
@@ -185,9 +185,9 @@ if __name__ == '__main__':
                 ai_cover = gr.Audio(label='AI Cover', show_share_button=False)
 
             ref_btn.click(update_models_list, None, outputs=voice_model)
-            is_webui = gr.Number(value=1, visible=False)
+            is_interface = gr.Number(value=1, visible=False)
             generate_btn.click(song_cover_pipeline,
-                               inputs=[song_input, voice_model, pitch, keep_files, is_webui, main_gain, backup_gain,
+                               inputs=[song_input, voice_model, pitch, keep_files, is_interface, main_gain, backup_gain,
                                        inst_gain, index_rate, filter_radius, rms_mix_rate, f0_method, crepe_hop_length,
                                        protect, pitch_all, reverb_rm_size, reverb_wet, reverb_dry, reverb_damping,
                                        output_format],
@@ -247,5 +247,5 @@ if __name__ == '__main__':
         share=args.share_enabled,
         enable_queue=True,
         server_name=None if not args.listen else (args.listen_host or '0.0.0.0'),
-        server_port=args.listen_port,
+        server_port=9999,
     )

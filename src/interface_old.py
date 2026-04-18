@@ -12,30 +12,21 @@ from main import song_cover_pipeline
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 mdxnet_models_dir = os.path.join(BASE_DIR, 'mdxnet_models')
-rvc_models_dir = os.path.join(BASE_DIR, 'rvc_models')
+voice_models_dir = os.path.join(BASE_DIR, 'voice_models')
 output_dir = os.path.join(BASE_DIR, 'song_output')
 
 
 def get_current_models(models_dir):
     models_list = os.listdir(models_dir)
-    items_to_remove = ['hubert_base.pt', 'MODELS.txt', 'public_models.json', 'rmvpe.pt']
+    items_to_remove = ['hubert_base.pt', 'MODELS.txt', 'rmvpe.pt']
     return [item for item in models_list if item not in items_to_remove]
 
 
 def update_models_list():
-    models_l = get_current_models(rvc_models_dir)
+    models_l = get_current_models(voice_models_dir)
     return gr.Dropdown.update(choices=models_l)
 
 
-def load_public_models():
-    models_table = []
-    for model in public_models['voice_models']:
-        if not model['name'] in voice_models:
-            model = [model['name'], model['description'], model['credit'], model['url'], ', '.join(model['tags'])]
-            models_table.append(model)
-
-    tags = list(public_models['tags'].keys())
-    return gr.DataFrame.update(value=models_table), gr.CheckboxGroup.update(choices=tags)
 
 
 def extract_zip(extraction_folder, zip_name):
@@ -71,7 +62,7 @@ def download_online_model(url, dir_name, progress=gr.Progress()):
     try:
         progress(0, desc=f'[~] Downloading voice model with name {dir_name}...')
         zip_name = url.split('/')[-1]
-        extraction_folder = os.path.join(rvc_models_dir, dir_name)
+        extraction_folder = os.path.join(voice_models_dir, dir_name)
         if os.path.exists(extraction_folder):
             raise gr.Error(f'Voice model directory {dir_name} already exists! Choose a different name for your voice model.')
 
@@ -90,7 +81,7 @@ def download_online_model(url, dir_name, progress=gr.Progress()):
 
 def upload_local_model(zip_path, dir_name, progress=gr.Progress()):
     try:
-        extraction_folder = os.path.join(rvc_models_dir, dir_name)
+        extraction_folder = os.path.join(voice_models_dir, dir_name)
         if os.path.exists(extraction_folder):
             raise gr.Error(f'Voice model directory {dir_name} already exists! Choose a different name for your voice model.')
 
@@ -103,40 +94,6 @@ def upload_local_model(zip_path, dir_name, progress=gr.Progress()):
         raise gr.Error(str(e))
 
 
-def filter_models(tags, query):
-    models_table = []
-
-    # no filter
-    if len(tags) == 0 and len(query) == 0:
-        for model in public_models['voice_models']:
-            models_table.append([model['name'], model['description'], model['credit'], model['url'], model['tags']])
-
-    # filter based on tags and query
-    elif len(tags) > 0 and len(query) > 0:
-        for model in public_models['voice_models']:
-            if all(tag in model['tags'] for tag in tags):
-                model_attributes = f"{model['name']} {model['description']} {model['credit']} {' '.join(model['tags'])}".lower()
-                if query.lower() in model_attributes:
-                    models_table.append([model['name'], model['description'], model['credit'], model['url'], model['tags']])
-
-    # filter based on only tags
-    elif len(tags) > 0:
-        for model in public_models['voice_models']:
-            if all(tag in model['tags'] for tag in tags):
-                models_table.append([model['name'], model['description'], model['credit'], model['url'], model['tags']])
-
-    # filter based on only query
-    else:
-        for model in public_models['voice_models']:
-            model_attributes = f"{model['name']} {model['description']} {model['credit']} {' '.join(model['tags'])}".lower()
-            if query.lower() in model_attributes:
-                models_table.append([model['name'], model['description'], model['credit'], model['url'], model['tags']])
-
-    return gr.DataFrame.update(value=models_table)
-
-
-def pub_dl_autofill(pub_models, event: gr.SelectData):
-    return gr.Text.update(value=pub_models.loc[event.index[0], 'URL']), gr.Text.update(value=pub_models.loc[event.index[0], 'Model Name'])
 
 
 def swap_visibility():
@@ -157,18 +114,16 @@ def show_hop_slider(pitch_detection_algo):
 if __name__ == '__main__':
     parser = ArgumentParser(description='Generate a AI cover song in the song_output/id directory.', add_help=True)
     parser.add_argument("--share", action="store_true", dest="share_enabled", default=False, help="Enable sharing")
-    parser.add_argument("--listen", action="store_true", default=False, help="Make the WebUI reachable from your local network.")
+    parser.add_argument("--listen", action="store_true", default=False, help="Make the Interface reachable from your local network.")
     parser.add_argument('--listen-host', type=str, help='The hostname that the server will use.')
     parser.add_argument('--listen-port', type=int, help='The listening port that the server will use.')
     args = parser.parse_args()
 
-    voice_models = get_current_models(rvc_models_dir)
-    with open(os.path.join(rvc_models_dir, 'public_models.json'), encoding='utf8') as infile:
-        public_models = json.load(infile)
+    voice_models = get_current_models(voice_models_dir)
 
-    with gr.Blocks(title='AICoverGenWebUI') as app:
+    with gr.Blocks(title='AutoCover') as app:
 
-        gr.Label('AICoverGen WebUI Modified For Colab/Kaggle ❤️', show_label=False)
+        gr.Label('Interface Modified For Colab/Kaggle ❤️', show_label=False)
 
         # main tab
         with gr.Tab("Generate"):
@@ -176,7 +131,7 @@ if __name__ == '__main__':
             with gr.Accordion('Main Options'):
                 with gr.Row():
                     with gr.Column():
-                        rvc_model = gr.Dropdown(voice_models, label='Voice Models', info='Models folder "AICoverGen --> rvc_models". After new models are added into this folder, click the refresh button')
+                        voice_model = gr.Dropdown(voice_models, label='Voice Models', info='Models folder "AutoCover --> voice_models". After new models are added into this folder, click the refresh button')
                         ref_btn = gr.Button('Refresh Models 🔁', variant='primary')
 
                     with gr.Column() as yt_link_col:
@@ -225,14 +180,14 @@ if __name__ == '__main__':
                 output_format = gr.Dropdown(['mp3', 'wav'], value='mp3', label='Output file type', info='mp3: small file size, decent quality. wav: Large file size, best quality')
 
             with gr.Row():
-                clear_btn = gr.ClearButton(value='Clear', components=[song_input, rvc_model, keep_files, local_file])
+                clear_btn = gr.ClearButton(value='Clear', components=[song_input, voice_model, keep_files, local_file])
                 generate_btn = gr.Button("Generate", variant='primary')
                 ai_cover = gr.Audio(label='AI Cover', show_share_button=False)
 
-            ref_btn.click(update_models_list, None, outputs=rvc_model)
-            is_webui = gr.Number(value=1, visible=False)
+            ref_btn.click(update_models_list, None, outputs=voice_model)
+            is_interface = gr.Number(value=1, visible=False)
             generate_btn.click(song_cover_pipeline,
-                               inputs=[song_input, rvc_model, pitch, keep_files, is_webui, main_gain, backup_gain,
+                               inputs=[song_input, voice_model, pitch, keep_files, is_interface, main_gain, backup_gain,
                                        inst_gain, index_rate, filter_radius, rms_mix_rate, f0_method, crepe_hop_length,
                                        protect, pitch_all, reverb_rm_size, reverb_wet, reverb_dry, reverb_damping,
                                        output_format],
@@ -261,43 +216,17 @@ if __name__ == '__main__':
                     [
                         ['https://huggingface.co/phant0m4r/LiSA/resolve/main/LiSA.zip', 'Lisa'],
                         ['https://pixeldrain.com/u/3tJmABXA', 'Gura'],
-                        ['https://huggingface.co/Kit-Lemonfoot/kitlemonfoot_rvc_models/resolve/main/AZKi%20(Hybrid).zip', 'Azki']
+                        ['https://huggingface.co/Kit-Lemonfoot/kitlemonfoot_voice_models/resolve/main/AZKi%20(Hybrid).zip', 'Azki']
                     ],
                     [model_zip_link, model_name],
                     [],
                     download_online_model,
                 )
 
-            with gr.Tab('From Public Index'):
-
-                gr.Markdown('## How to use')
-                gr.Markdown('- Click Initialize public models table')
-                gr.Markdown('- Filter models using tags or search bar')
-                gr.Markdown('- Select a row to autofill the download link and model name')
-                gr.Markdown('- Click Download')
-
-                with gr.Row():
-                    pub_zip_link = gr.Text(label='Download link to model')
-                    pub_model_name = gr.Text(label='Model name')
-
-                with gr.Row():
-                    download_pub_btn = gr.Button('Download 🌐', variant='primary', scale=19)
-                    pub_dl_output_message = gr.Text(label='Output Message', interactive=False, scale=20)
-
-                filter_tags = gr.CheckboxGroup(value=[], label='Show voice models with tags', choices=[])
-                search_query = gr.Text(label='Search')
-                load_public_models_button = gr.Button(value='Initialize public models table', variant='primary')
-
-                public_models_table = gr.DataFrame(value=[], headers=['Model Name', 'Description', 'Credit', 'URL', 'Tags'], label='Available Public Models', interactive=False)
-                public_models_table.select(pub_dl_autofill, inputs=[public_models_table], outputs=[pub_zip_link, pub_model_name])
-                load_public_models_button.click(load_public_models, outputs=[public_models_table, filter_tags])
-                search_query.change(filter_models, inputs=[filter_tags, search_query], outputs=public_models_table)
-                filter_tags.change(filter_models, inputs=[filter_tags, search_query], outputs=public_models_table)
-                download_pub_btn.click(download_online_model, inputs=[pub_zip_link, pub_model_name], outputs=pub_dl_output_message)
 
         # Upload tab
         with gr.Tab('Upload model'):
-            gr.Markdown('## Upload locally trained RVC v2 model and index file')
+            gr.Markdown('## Upload locally trained Voice v2 model and index file')
             gr.Markdown('- Find model file (weights folder) and optional index file (logs/[name] folder)')
             gr.Markdown('- Compress files into zip file')
             gr.Markdown('- Upload zip file and give unique name for voice')
@@ -318,5 +247,5 @@ if __name__ == '__main__':
         share=args.share_enabled,
         enable_queue=True,
         server_name=None if not args.listen else (args.listen_host or '0.0.0.0'),
-        server_port=9999,
+        server_port=args.listen_port,
     )

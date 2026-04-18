@@ -19,12 +19,12 @@ from pedalboard.io import AudioFile
 from pydub import AudioSegment
 
 from mdx import run_mdx
-from rvc import Config, load_hubert, get_vc, rvc_infer
+from voice import Config, load_hubert, get_vc, voice_infer
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 mdxnet_models_dir = os.path.join(BASE_DIR, 'mdxnet_models')
-rvc_models_dir = os.path.join(BASE_DIR, 'rvc_models')
+voice_models_dir = os.path.join(BASE_DIR, 'voice_models')
 output_dir = os.path.join(BASE_DIR, 'song_output')
 
 
@@ -78,28 +78,28 @@ def yt_download(link):
     return download_path
 
 
-def raise_exception(error_msg, is_webui):
-    if is_webui:
+def raise_exception(error_msg, is_interface):
+    if is_interface:
         raise gr.Error(error_msg)
     else:
         raise Exception(error_msg)
 
 
-def get_rvc_model(voice_model, is_webui):
-    rvc_model_filename, rvc_index_filename = None, None
-    model_dir = os.path.join(rvc_models_dir, voice_model)
+def get_voice_model(voice_model, is_interface):
+    voice_model_filename, voice_index_filename = None, None
+    model_dir = os.path.join(voice_models_dir, voice_model)
     for file in os.listdir(model_dir):
         ext = os.path.splitext(file)[1]
         if ext == '.pth':
-            rvc_model_filename = file
+            voice_model_filename = file
         if ext == '.index':
-            rvc_index_filename = file
+            voice_index_filename = file
 
-    if rvc_model_filename is None:
+    if voice_model_filename is None:
         error_msg = f'No model file exists in {model_dir}.'
-        raise_exception(error_msg, is_webui)
+        raise_exception(error_msg, is_interface)
 
-    return os.path.join(model_dir, rvc_model_filename), os.path.join(model_dir, rvc_index_filename) if rvc_index_filename else ''
+    return os.path.join(model_dir, voice_model_filename), os.path.join(model_dir, voice_index_filename) if voice_index_filename else ''
 
 
 def get_audio_paths(song_dir):
@@ -156,17 +156,17 @@ def get_hash(filepath):
     return file_hash.hexdigest()[:11]
 
 
-def display_progress(message, percent, is_webui, progress=None):
-    if is_webui:
+def display_progress(message, percent, is_interface, progress=None):
+    if is_interface:
         progress(percent, desc=message)
     else:
         print(message)
 
 
-def preprocess_song(song_input, mdx_model_params, song_id, is_webui, input_type, progress=None):
+def preprocess_song(song_input, mdx_model_params, song_id, is_interface, input_type, progress=None):
     keep_orig = False
     if input_type == 'yt':
-        display_progress('[~] Downloading song...', 0, is_webui, progress)
+        display_progress('[~] Downloading song...', 0, is_interface, progress)
         song_link = song_input.split('&')[0]
         orig_song_path = yt_download(song_link)
     elif input_type == 'local':
@@ -178,27 +178,27 @@ def preprocess_song(song_input, mdx_model_params, song_id, is_webui, input_type,
     song_output_dir = os.path.join(output_dir, song_id)
     orig_song_path = convert_to_stereo(orig_song_path)
 
-    display_progress('[~] Separating Vocals from Instrumental...', 0.1, is_webui, progress)
+    display_progress('[~] Separating Vocals from Instrumental...', 0.1, is_interface, progress)
     vocals_path, instrumentals_path = run_mdx(mdx_model_params, song_output_dir, os.path.join(mdxnet_models_dir, 'UVR-MDX-NET-Voc_FT.onnx'), orig_song_path, denoise=True, keep_orig=keep_orig)
 
-    display_progress('[~] Separating Main Vocals from Backup Vocals...', 0.2, is_webui, progress)
+    display_progress('[~] Separating Main Vocals from Backup Vocals...', 0.2, is_interface, progress)
     backup_vocals_path, main_vocals_path = run_mdx(mdx_model_params, song_output_dir, os.path.join(mdxnet_models_dir, 'UVR_MDXNET_KARA_2.onnx'), vocals_path, suffix='Backup', invert_suffix='Main', denoise=True)
 
-    display_progress('[~] Applying DeReverb to Vocals...', 0.3, is_webui, progress)
+    display_progress('[~] Applying DeReverb to Vocals...', 0.3, is_interface, progress)
     _, main_vocals_dereverb_path = run_mdx(mdx_model_params, song_output_dir, os.path.join(mdxnet_models_dir, 'Reverb_HQ_By_FoxJoy.onnx'), main_vocals_path, invert_suffix='DeReverb', exclude_main=True, denoise=True)
 
     return orig_song_path, vocals_path, instrumentals_path, main_vocals_path, backup_vocals_path, main_vocals_dereverb_path
 
 
-def voice_change(voice_model, vocals_path, output_path, pitch_change, f0_method, index_rate, filter_radius, rms_mix_rate, protect, crepe_hop_length, is_webui):
-    rvc_model_path, rvc_index_path = get_rvc_model(voice_model, is_webui)
+def voice_change(voice_model, vocals_path, output_path, pitch_change, f0_method, index_rate, filter_radius, rms_mix_rate, protect, crepe_hop_length, is_interface):
+    voice_model_path, voice_index_path = get_voice_model(voice_model, is_interface)
     device = 'cuda:0'
     config = Config(device, True)
-    hubert_model = load_hubert(device, config.is_half, os.path.join(rvc_models_dir, 'hubert_base.pt'))
-    cpt, version, net_g, tgt_sr, vc = get_vc(device, config.is_half, config, rvc_model_path)
+    hubert_model = load_hubert(device, config.is_half, os.path.join(voice_models_dir, 'hubert_base.pt'))
+    cpt, version, net_g, tgt_sr, vc = get_vc(device, config.is_half, config, voice_model_path)
 
     # convert main vocals
-    rvc_infer(rvc_index_path, index_rate, vocals_path, output_path, pitch_change, f0_method, cpt, version, net_g, filter_radius, tgt_sr, rms_mix_rate, protect, crepe_hop_length, vc, hubert_model)
+    voice_infer(voice_index_path, index_rate, vocals_path, output_path, pitch_change, f0_method, cpt, version, net_g, filter_radius, tgt_sr, rms_mix_rate, protect, crepe_hop_length, vc, hubert_model)
     del hubert_model, cpt
     gc.collect()
 
@@ -234,15 +234,15 @@ def combine_audio(audio_paths, output_path, main_gain, backup_gain, inst_gain, o
 
 
 def song_cover_pipeline(song_input, voice_model, pitch_change, keep_files,
-                        is_webui=0, main_gain=0, backup_gain=0, inst_gain=0, index_rate=0.5, filter_radius=3,
+                        is_interface=0, main_gain=0, backup_gain=0, inst_gain=0, index_rate=0.5, filter_radius=3,
                         rms_mix_rate=0.25, f0_method='rmvpe', crepe_hop_length=128, protect=0.33, pitch_change_all=0,
                         reverb_rm_size=0.15, reverb_wet=0.2, reverb_dry=0.8, reverb_damping=0.7, output_format='mp3',
                         progress=gr.Progress()):
     try:
         if not song_input or not voice_model:
-            raise_exception('Ensure that the song input field and voice model field is filled.', is_webui)
+            raise_exception('Ensure that the song input field and voice model field is filled.', is_interface)
 
-        display_progress('[~] Starting AI Cover Generation Pipeline...', 0, is_webui, progress)
+        display_progress('[~] Starting AI Cover Generation Pipeline...', 0, is_interface, progress)
 
         with open(os.path.join(mdxnet_models_dir, 'model_data.json')) as infile:
             mdx_model_params = json.load(infile)
@@ -253,7 +253,7 @@ def song_cover_pipeline(song_input, voice_model, pitch_change, keep_files,
             song_id = get_youtube_video_id(song_input)
             if song_id is None:
                 error_msg = 'Invalid YouTube url.'
-                raise_exception(error_msg, is_webui)
+                raise_exception(error_msg, is_interface)
 
         # local audio file
         else:
@@ -264,13 +264,13 @@ def song_cover_pipeline(song_input, voice_model, pitch_change, keep_files,
             else:
                 error_msg = f'{song_input} does not exist.'
                 song_id = None
-                raise_exception(error_msg, is_webui)
+                raise_exception(error_msg, is_interface)
 
         song_dir = os.path.join(output_dir, song_id)
 
         if not os.path.exists(song_dir):
             os.makedirs(song_dir)
-            orig_song_path, vocals_path, instrumentals_path, main_vocals_path, backup_vocals_path, main_vocals_dereverb_path = preprocess_song(song_input, mdx_model_params, song_id, is_webui, input_type, progress)
+            orig_song_path, vocals_path, instrumentals_path, main_vocals_path, backup_vocals_path, main_vocals_dereverb_path = preprocess_song(song_input, mdx_model_params, song_id, is_interface, input_type, progress)
 
         else:
             vocals_path, main_vocals_path = None, None
@@ -278,7 +278,7 @@ def song_cover_pipeline(song_input, voice_model, pitch_change, keep_files,
 
             # if any of the audio files aren't available or keep intermediate files, rerun preprocess
             if any(path is None for path in paths) or keep_files:
-                orig_song_path, vocals_path, instrumentals_path, main_vocals_path, backup_vocals_path, main_vocals_dereverb_path = preprocess_song(song_input, mdx_model_params, song_id, is_webui, input_type, progress)
+                orig_song_path, vocals_path, instrumentals_path, main_vocals_path, backup_vocals_path, main_vocals_dereverb_path = preprocess_song(song_input, mdx_model_params, song_id, is_interface, input_type, progress)
             else:
                 orig_song_path, instrumentals_path, main_vocals_dereverb_path, backup_vocals_path = paths
 
@@ -287,22 +287,22 @@ def song_cover_pipeline(song_input, voice_model, pitch_change, keep_files,
         ai_cover_path = os.path.join(song_dir, f'{os.path.splitext(os.path.basename(orig_song_path))[0]} ({voice_model} Ver).{output_format}')
 
         if not os.path.exists(ai_vocals_path):
-            display_progress('[~] Converting voice using RVC...', 0.5, is_webui, progress)
-            voice_change(voice_model, main_vocals_dereverb_path, ai_vocals_path, pitch_change, f0_method, index_rate, filter_radius, rms_mix_rate, protect, crepe_hop_length, is_webui)
+            display_progress('[~] Converting voice using Voice...', 0.5, is_interface, progress)
+            voice_change(voice_model, main_vocals_dereverb_path, ai_vocals_path, pitch_change, f0_method, index_rate, filter_radius, rms_mix_rate, protect, crepe_hop_length, is_interface)
 
-        display_progress('[~] Applying audio effects to Vocals...', 0.8, is_webui, progress)
+        display_progress('[~] Applying audio effects to Vocals...', 0.8, is_interface, progress)
         ai_vocals_mixed_path = add_audio_effects(ai_vocals_path, reverb_rm_size, reverb_wet, reverb_dry, reverb_damping)
 
         if pitch_change_all != 0:
-            display_progress('[~] Applying overall pitch change', 0.85, is_webui, progress)
+            display_progress('[~] Applying overall pitch change', 0.85, is_interface, progress)
             instrumentals_path = pitch_shift(instrumentals_path, pitch_change_all)
             backup_vocals_path = pitch_shift(backup_vocals_path, pitch_change_all)
 
-        display_progress('[~] Combining AI Vocals and Instrumentals...', 0.9, is_webui, progress)
+        display_progress('[~] Combining AI Vocals and Instrumentals...', 0.9, is_interface, progress)
         combine_audio([ai_vocals_mixed_path, backup_vocals_path, instrumentals_path], ai_cover_path, main_gain, backup_gain, inst_gain, output_format)
 
         if not keep_files:
-            display_progress('[~] Removing intermediate audio files...', 0.95, is_webui, progress)
+            display_progress('[~] Removing intermediate audio files...', 0.95, is_interface, progress)
             intermediate_files = [vocals_path, main_vocals_path, ai_vocals_mixed_path]
             if pitch_change_all != 0:
                 intermediate_files += [instrumentals_path, backup_vocals_path]
@@ -313,13 +313,13 @@ def song_cover_pipeline(song_input, voice_model, pitch_change, keep_files,
         return ai_cover_path
 
     except Exception as e:
-        raise_exception(str(e), is_webui)
+        raise_exception(str(e), is_interface)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate a AI cover song in the song_output/id directory.', add_help=True)
     parser.add_argument('-i', '--song-input', type=str, required=True, help='Link to a YouTube video or the filepath to a local mp3/wav file to create an AI cover of')
-    parser.add_argument('-dir', '--rvc-dirname', type=str, required=True, help='Name of the folder in the rvc_models directory containing the RVC model file and optional index file to use')
+    parser.add_argument('-dir', '--voice-dirname', type=str, required=True, help='Name of the folder in the voice_models directory containing the model file and optional index file to use')
     parser.add_argument('-p', '--pitch-change', type=int, required=True, help='Change the pitch of AI Vocals only. Generally, use 12 for male to female and -12 for vice-versa. (Octaves)')
     parser.add_argument('-k', '--keep-files', action=argparse.BooleanOptionalAction, help='Whether to keep all intermediate audio files generated in the song_output/id directory, e.g. Isolated Vocals/Instrumentals')
     parser.add_argument('-ir', '--index-rate', type=float, default=0.5, help='A decimal number e.g. 0.5, used to reduce/resolve the timbre leakage problem. If set to 1, more biased towards the timbre quality of the training dataset')
@@ -339,11 +339,11 @@ if __name__ == '__main__':
     parser.add_argument('-oformat', '--output-format', type=str, default='mp3', help='Output format of audio file. mp3 for smaller file size, wav for best quality')
     args = parser.parse_args()
 
-    rvc_dirname = args.rvc_dirname
-    if not os.path.exists(os.path.join(rvc_models_dir, rvc_dirname)):
-        raise Exception(f'The folder {os.path.join(rvc_models_dir, rvc_dirname)} does not exist.')
+    voice_dirname = args.voice_dirname
+    if not os.path.exists(os.path.join(voice_models_dir, voice_dirname)):
+        raise Exception(f'The folder {os.path.join(voice_models_dir, voice_dirname)} does not exist.')
 
-    cover_path = song_cover_pipeline(args.song_input, rvc_dirname, args.pitch_change, args.keep_files,
+    cover_path = song_cover_pipeline(args.song_input, voice_dirname, args.pitch_change, args.keep_files,
                                      main_gain=args.main_vol, backup_gain=args.backup_vol, inst_gain=args.inst_vol,
                                      index_rate=args.index_rate, filter_radius=args.filter_radius,
                                      rms_mix_rate=args.rms_mix_rate, f0_method=args.pitch_detection_algo,
